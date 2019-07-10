@@ -27,7 +27,7 @@ type GetDriver interface {
 
 // Pool 连接池
 type Pool interface {
-	Get() (GetDriver, error)
+	Get(context.Context) (GetDriver, error)
 	Put(GetDriver) error
 	Close() error
 }
