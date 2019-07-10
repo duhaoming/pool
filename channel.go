@@ -363,8 +363,11 @@ func (db *DB) connectionCleaner() {
 const maxReconnect = 2
 
 // 获取资源
-func (db *DB) Get() (GetDriver, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), db.timeOut)
+func (db *DB) Get(ctx context.Context) (GetDriver, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, db.timeOut)
 	defer cancel()
 	var dc *driverConn
 	var err error
