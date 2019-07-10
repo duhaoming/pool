@@ -367,12 +367,12 @@ func (db *DB) Get(ctx context.Context) (GetDriver, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(ctx, db.timeOut)
+	ctext, cancel := context.WithTimeout(ctx, db.timeOut)
 	defer cancel()
 	var dc *driverConn
 	var err error
 	for i := 0; i < maxReconnect; i++ {
-		dc, err = db.conn(ctx)
+		dc, err = db.conn(ctext)
 		if err != ErrBadConn {
 			break
 		}
