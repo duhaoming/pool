@@ -87,7 +87,7 @@ func TestPool(t *testing.T) {
 		t.Fatal(err)
 	}
 	println(string(read))
-	poolConn.Put(c)
+	c.Close()
 	poolConn.Close()
 	cancel()
 }
@@ -125,7 +125,7 @@ func BenchmarkGetPool(b *testing.B) {
 			log.Printf("%s\n", read)
 			log.Printf("%s\n", co.LocalAddr().String())
 
-			poolConn.Put(c)
+			c.Close()
 		}(&n)
 	}
 	n.Wait()
@@ -154,7 +154,7 @@ func BenchmarkGetGrpcPool(b *testing.B) {
 
 			//co := c.Conn().(*grpc.ClientConn)
 
-			poolConn.Put(c)
+			c.Close()
 		}(&n)
 	}
 	//n.Wait()
