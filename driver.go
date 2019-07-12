@@ -46,3 +46,14 @@ func (dc *driverConn) close() error {
 func (dc *driverConn) Conn() io.Closer {
 	return dc.ci
 }
+
+// 回收资源
+func (dc *driverConn) Close() error {
+        dc.db.Lock()
+        if !dc.db.recovery(dc) {
+                dc.db.Unlock()
+                return dc.close()
+        }   
+        dc.db.Unlock()
+        return nil 
+}
