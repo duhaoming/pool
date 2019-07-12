@@ -33,7 +33,7 @@ c, err := poolConn.Get()
 co := c.Conn().(*grpc.ClientConn)
 
 // 回收资源
-err = poolConn.Put(c)
+err = c.Close()
 
 // 关闭连接池
 poolConn.Close()
