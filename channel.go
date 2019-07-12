@@ -23,12 +23,12 @@ type Connect func(context.Context) (io.Closer, error)
 // GetConn 连接接口
 type GetDriver interface {
 	Conn() io.Closer
+	Close() error
 }
 
 // Pool 连接池
 type Pool interface {
 	Get(context.Context) (GetDriver, error)
-	Put(GetDriver) error
 	Close() error
 }
 
@@ -383,18 +383,3 @@ func (db *DB) Get(ctx context.Context) (GetDriver, error) {
 	return dc, nil
 }
 
-// 回收资源
-func (db *DB) Put(driver GetDriver) error {
-	db.Lock()
-	var dc *driverConn
-	var ok bool
-	if dc, ok = driver.(*driverConn); !ok {
-		return errors.New("driver type error")
-	}
-	if !db.recovery(dc) {
-		db.Unlock()
-		return dc.close()
-	}
-	db.Unlock()
-	return nil
-}
