@@ -65,4 +65,4 @@ func main() {
 ```
 
 **注：**
-资源池参考database/sql实现，简化了许多功能。
+资源池参考`database/sql`实现，简化了许多功能。
