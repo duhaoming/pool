@@ -29,6 +29,7 @@ const addr = "127.0.0.1:8090"
 func Connects(_ context.Context) (io.Closer, error) {
 	return grpc.Dial(addr, grpc.WithInsecure())
 }
+
 func main() {
 	// 默认配置池
 	// poolConn := pool.Open(Connects)
