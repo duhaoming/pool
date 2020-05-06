@@ -12,6 +12,8 @@ golang 实现通用资源池
 ``` goalng
 // 这里用grpc当做实例
 // 创建资源函数
+package main
+
 import (
 	"context"
 	"time"
@@ -41,8 +43,8 @@ func main() {
 
 	// 获取资源
 	// ctx := context.Background()
-	// c, err := poolConn.Get(ctx)
-	c, err := poolConn.Get(nil)
+	// c, err := cusConn.Get(ctx)
+	c, err := cusConn.Get(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -57,7 +59,7 @@ func main() {
 	}
 
 	// 关闭连接池
-	poolConn.Close()
+	cusConn.Close()
 }
 ```
 
