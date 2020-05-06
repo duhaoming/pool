@@ -28,6 +28,9 @@ cusConn := pool.OpenCustom(
 
 // 获取资源
 c, err := poolConn.Get(nil)
+if err != nil {
+	panic(err)
+}
 
 // 真实客户端
 co := c.Conn().(*grpc.ClientConn)
