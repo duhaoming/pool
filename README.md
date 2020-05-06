@@ -13,18 +13,23 @@ golang 实现通用资源池
 // 这里用grpc当做实例
 // 创建资源函数
 import (
-	// "context"
+	"context"
+	"time"
+	"io"
+	"fmt"
 
 	"github.com/duhaoming/pool"
 	"google.golang.org/grpc"
 )
+
+const addr = "127.0.0.1:8090"
 
 func Connects(_ context.Context) (io.Closer, error) {
 	return grpc.Dial(addr, grpc.WithInsecure())
 }
 func main() {
 	// 默认配置池
-	poolConn := pool.Open(Connects)
+	// poolConn := pool.Open(Connects)
 	// 可配置池
 	cusConn := pool.OpenCustom(
         	Connects,
@@ -44,6 +49,7 @@ func main() {
 
 	// 真实客户端
 	co := c.Conn().(*grpc.ClientConn)
+	fmt.Println(co)
 
 	// 回收资源
 	if err := c.Close(); err != nil {
