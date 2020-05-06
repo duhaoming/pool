@@ -12,34 +12,47 @@ golang 实现通用资源池
 ``` goalng
 // 这里用grpc当做实例
 // 创建资源函数
+import (
+	// "context"
+
+	"github.com/duhaoming/pool"
+	"google.golang.org/grpc"
+)
+
 func Connects(_ context.Context) (io.Closer, error) {
 	return grpc.Dial(addr, grpc.WithInsecure())
 }
-// 默认配置池
-poolConn := pool.Open(Connects)
-// 可配置池
-cusConn := pool.OpenCustom(
-        Connects,
-        5 * time.Minute,  // 活跃时间
-        5 * time.Second, // 超时时间
-        5,    // 最大空闲资源
-        10, // 最大打开的资源
-)
+func main() {
+	// 默认配置池
+	poolConn := pool.Open(Connects)
+	// 可配置池
+	cusConn := pool.OpenCustom(
+        	Connects,
+        	5 * time.Minute,  // 活跃时间
+        	5 * time.Second, // 超时时间
+        	5,    // 最大空闲资源
+        	10, // 最大打开的资源
+	)
 
-// 获取资源
-c, err := poolConn.Get(nil)
-if err != nil {
-	panic(err)
+	// 获取资源
+	// ctx := context.Background()
+	// c, err := poolConn.Get(ctx)
+	c, err := poolConn.Get(nil)
+	if err != nil {
+		panic(err)
+	}
+
+	// 真实客户端
+	co := c.Conn().(*grpc.ClientConn)
+
+	// 回收资源
+	if err := c.Close(); err != nil {
+		panic(err)
+	}
+
+	// 关闭连接池
+	poolConn.Close()
 }
-
-// 真实客户端
-co := c.Conn().(*grpc.ClientConn)
-
-// 回收资源
-err = c.Close()
-
-// 关闭连接池
-poolConn.Close()
 ```
 
 **注：**
