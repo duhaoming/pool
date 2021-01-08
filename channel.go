@@ -66,6 +66,7 @@ func OpenCustom(c Connect, maxLifetime, timeOut time.Duration, maxIdle, maxOpen 
 		timeOut:      timeOut,
 		maxIdle:      maxIdle,
 		maxOpen:      maxOpen,
+		freeConn:     make([]*driverConn, 0, maxOpen),
 		connRequests: make(map[uint64]chan *driverConn),
 	}
 
@@ -86,6 +87,7 @@ func Open(c Connect) Pool {
 		timeOut:      15 * time.Second,
 		maxIdle:      5,
 		maxOpen:      10,
+		freeConn:     make([]*driverConn, 0, 10),
 		connRequests: make(map[uint64]chan *driverConn),
 	}
 
