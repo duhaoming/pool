@@ -260,6 +260,10 @@ func (db *DB) recovery(dc *driverConn) bool {
 	if db.maxOpen > 0 && db.numOpen > db.maxOpen {
 		return false
 	}
+	if dc.expired(db.maxLifetime) {
+		db.maybeOpenNewConnections()
+		return false
+	}
 
 	if c := len(db.connRequests); c > 0 {
 		var req chan *driverConn
