@@ -1,5 +1,8 @@
 # pool
 golang 实现通用资源池。上线项目已经使用一年，稳定运行。
+``` shell 
+go get github.com/duhaoming/pool
+```
 
 # 功能
 + 资源池中资源类型为`io.Closer`接口类型
@@ -26,8 +29,8 @@ import (
 
 const addr = "127.0.0.1:8090"
 
-func Connects(_ context.Context) (io.Closer, error) {
-	return grpc.Dial(addr, grpc.WithInsecure())
+func Connects(ctx context.Context) (io.Closer, error) {
+	return grpc.DialContext(ctx, addr, grpc.WithInsecure())
 }
 
 func main() {
