@@ -29,6 +29,7 @@ func (dc *driverConn) close() error {
 
 	dc.mu.Lock()
 	if dc.ci == nil {
+		dc.mu.Unlock()
 		return nil
 	}
 	err = dc.ci.Close()
