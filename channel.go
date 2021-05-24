@@ -15,6 +15,8 @@ var (
 	ErrBadConn = errors.New("bad connection")
 	// ErrTimeOut 等待超时
 	ErrTimeOut = errors.New("wait timeout")
+	
+	defContext = context.Background()
 )
 
 // Connect 连接接口
@@ -163,6 +165,15 @@ func (db *DB) nextConnRequestsKey() uint64 {
 	return next
 }
 
+// 释放map,delete只能删除键,不能释放内存
+func (db *DB) releaseConnRequests() {
+        if db.connRequests != nil {
+                db.connRequests = nil 
+                db.nextRequest = 0 
+                db.connRequests = make(map[uint64]chan *driverConn)
+        }   
+}
+
 // 获取资源
 func (db *DB) conn(ctx context.Context) (*driverConn, error) {
 	db.Lock()
@@ -181,6 +192,7 @@ func (db *DB) conn(ctx context.Context) (*driverConn, error) {
 	lifetime := db.maxLifetime
 	numFree := len(db.freeConn)
 	if numFree > 0 {
+		db.releaseConnRequests()
 		conn := db.freeConn[0]
 		copy(db.freeConn, db.freeConn[1:])
 		db.freeConn = db.freeConn[:numFree-1]
@@ -338,6 +350,7 @@ func (db *DB) connectionCleaner() {
 
 		db.Lock()
 		if db.closed || db.numOpen == 0 {
+			db.releaseConnRequests()
 			db.cleanerCh = nil
 			db.Unlock()
 			return
@@ -372,7 +385,7 @@ const maxReconnect = 2
 // 获取资源
 func (db *DB) Get(ctx context.Context) (dc GetDriver, err error) {
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = defContext
 	}
 	ctext, cancel := context.WithTimeout(ctx, db.timeOut)
 	defer cancel()
@@ -384,4 +397,3 @@ func (db *DB) Get(ctx context.Context) (dc GetDriver, err error) {
 	}
 	return
 }
-
