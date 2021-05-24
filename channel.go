@@ -370,23 +370,18 @@ func (db *DB) connectionCleaner() {
 const maxReconnect = 2
 
 // 获取资源
-func (db *DB) Get(ctx context.Context) (GetDriver, error) {
+func (db *DB) Get(ctx context.Context) (dc GetDriver, err error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	ctext, cancel := context.WithTimeout(ctx, db.timeOut)
 	defer cancel()
-	var dc *driverConn
-	var err error
 	for i := 0; i < maxReconnect; i++ {
 		dc, err = db.conn(ctext)
 		if err != ErrBadConn {
 			break
 		}
 	}
-	if err != nil {
-		return nil, err
-	}
-	return dc, nil
+	return
 }
 
