@@ -328,6 +328,7 @@ func (db *DB) startCleanerLocked() {
 // 定时清理超时连接
 func (db *DB) connectionCleaner() {
 	t := time.NewTimer(db.maxLifetime)
+	defer t.Stop()
 
 	for {
 		select {
