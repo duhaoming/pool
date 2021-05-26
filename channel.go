@@ -167,7 +167,7 @@ func (db *DB) nextConnRequestsKey() uint64 {
 
 // 释放map,delete只能删除键,不能释放内存
 func (db *DB) releaseConnRequests() {
-        if db.connRequests != nil {
+        if db.nextRequest != 0 {
                 db.connRequests = nil 
                 db.nextRequest = 0 
                 db.connRequests = make(map[uint64]chan *driverConn)
