@@ -11,7 +11,7 @@ type driverConn struct {
 	mu sync.Mutex
 
 	createdAt time.Time //连接创建时间
-	cleanDriver *time.Timer
+	timer     *time.Timer
 	ci        io.Closer //连接接口
 	done      chan struct{}
 	isClosed  bool
@@ -34,8 +34,8 @@ func (dc *driverConn) close() (err error) {
 		return nil
 	}
 	dc.isClosed = true
-	if dc.cleanDriver != nil {
-		dc.cleanDriver.Stop()
+	if dc.timer != nil {
+		dc.timer.Stop()
 	}
 	dc.mu.Unlock()
 	err = dc.ci.Close()
@@ -62,29 +62,28 @@ func (dc *driverConn) Close() error {
 }
 
 func (dc *driverConn) cleanDriver() {
-		dc.db.Lock()
-		if dc.db.closed || dc.db.numOpen == 0 {
-			dc.db.releaseConnRequests()
-			dc.db.Unlock()
-			return
-		}
-
-		var closing []*driverConn = make([]*driverConn, 0, 1)
-		for i, c := range dc.db.freeConn {
-			if c == dc {
-				closing = append(closing, c)
-				last := len(dc.db.freeConn) - 1
-				dc.db.freeConn[i] = dc.db.freeConn[last]
-				dc.db.freeConn[last] = nil
-				dc.db.freeConn = dc.db.freeConn[:last]
-				break
-			}
-		}
+	dc.db.Lock()
+	if dc.db.closed || dc.db.numOpen == 0 {
+		dc.db.releaseConnRequests()
 		dc.db.Unlock()
+		return
+	}
 
-		for _, c := range closing {
-			c.close()
-			return
+	var closing []*driverConn = make([]*driverConn, 0, 1)
+	for i, c := range dc.db.freeConn {
+		if c == dc {
+			closing = append(closing, c)
+			last := len(dc.db.freeConn) - 1
+			dc.db.freeConn[i] = dc.db.freeConn[last]
+			dc.db.freeConn[last] = nil
+			dc.db.freeConn = dc.db.freeConn[:last]
+			break
 		}
-		dc.cleanDriver.Reset(dc.db.maxLifetime)
+	}
+	dc.db.Unlock()
+
+	for _, c := range closing {
+		c.close()
+		return
+	}
 }
