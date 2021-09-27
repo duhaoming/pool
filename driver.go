@@ -11,6 +11,7 @@ type driverConn struct {
 	mu sync.Mutex
 
 	createdAt time.Time //连接创建时间
+	cleanDriver *time.Timer
 	ci        io.Closer //连接接口
 	done      chan struct{}
 	isClosed  bool
@@ -33,12 +34,8 @@ func (dc *driverConn) close() (err error) {
 		return nil
 	}
 	dc.isClosed = true
-	if dc.done == nil {
-		closedchan := make(chan struct{})
-		close(closedchan)
-		dc.done = closedchan
-	} else {
-		close(dc.done)
+	if dc.cleanDriver != nil {
+		dc.cleanDriver.Stop()
 	}
 	dc.mu.Unlock()
 	err = dc.ci.Close()
@@ -58,22 +55,13 @@ func (dc *driverConn) Conn() io.Closer {
 
 // 回收资源
 func (dc *driverConn) Close() error {
-	if !dc.db.putConn(dc) {
+	if !dc.db.putConn(dc, nil) {
 		return dc.close()
 	}
 	return nil
 }
 
 func (dc *driverConn) cleanDriver() {
-
-	t := time.NewTimer(dc.db.maxLifetime)
-	defer t.Stop()
-	for {
-		select {
-		case <-t.C:
-		case <-dc.Done():
-			return
-		}
 		dc.db.Lock()
 		if dc.db.closed || dc.db.numOpen == 0 {
 			dc.db.releaseConnRequests()
@@ -98,16 +86,5 @@ func (dc *driverConn) cleanDriver() {
 			c.close()
 			return
 		}
-		t.Reset(dc.db.maxLifetime)
-	}
-}
-
-func (dc *driverConn) Done() <-chan struct{} {
-	dc.mu.Lock()
-	if dc.done == nil {
-		dc.done = make(chan struct{})
-	}
-	d := dc.done
-	dc.mu.Unlock()
-	return d
+		dc.cleanDriver.Reset(dc.db.maxLifetime)
 }
