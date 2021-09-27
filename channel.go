@@ -41,16 +41,16 @@ type DB struct {
 	openerCh     chan struct{}               //创建新连接信号
 	cleanerCh    chan struct{}               //清理连接信号
 
-	connector   Connect
-	ctx context.Context
+	connector    Connect
+	ctx               context.Context
 	maxLifetime time.Duration //活跃时间
-	timeOut     time.Duration //超时时间
+	timeOut       time.Duration //超时时间
 	maxOpen     int           //最大打开连接数
 	numOpen     int           //打开连接数
-	maxIdle     int           //最大空闲连接数
+	maxIdle        int           //最大空闲连接数
 	nextRequest uint64        //下一个等待连接key
 
-	stop   func() //关闭触发函数，context的
+	stop    func() //关闭触发函数，context的
 	closed bool   //连接池是否关闭
 }
 
@@ -141,14 +141,14 @@ func (db *DB) openNewConnection(ctx context.Context) {
 		createdAt: time.Now(),
 		ci:        ci,
 	}
-	if !db.recovery(dc) {
+	if !db.recovery(dc, nil) {
 		db.numOpen--
 		ci.Close()
 		db.Unlock()
 		return
 	}
 	db.Unlock()
-	dc.timer = time.AfterFunc(db.maxLifetime, dc.cleanDriver())
+	dc.timer = time.AfterFunc(db.maxLifetime, dc.cleanDriver)
 }
 
 // 资源创建失败时, 判断是否有还在等待的请求, 有就创建新的资源
@@ -271,7 +271,7 @@ func (db *DB) conn(ctx context.Context) (*driverConn, error) {
 		createdAt: time.Now(),
 		inUse:     true,
 	}
-	dc.timer = time.AfterFunc(db.maxLifetime, dc.cleanDriver())
+	dc.timer = time.AfterFunc(db.maxLifetime, dc.cleanDriver)
 	return dc, nil
 }
 
@@ -298,7 +298,7 @@ func (db *DB) recovery(dc *driverConn, err error) bool {
 		return false
 	}
 	if c := len(db.connRequests); c > 0 {
-		var req chan *driverConn
+		var req chan connRequest
 		var reqkey uint64
 		for reqkey, req = range db.connRequests {
 			break
@@ -353,7 +353,7 @@ func (db *DB) Close() (err error) {
 
 // 获取资源
 func (db *DB) Get() (dc Driver, err error) {
-	ctext, cancel := context.Cancel(db.ctx)
+	ctext, cancel := context.WithCancel(db.ctx)
 	timer := time.AfterFunc(db.timeOut, cancel)
 	for i := 0; i < 2; i++ {
 		dc, err = db.conn(ctext)
