@@ -47,8 +47,8 @@ func main() {
 
 	// 获取资源
 	// ctx := context.Background()
-	// c, err := cusConn.Get(ctx)
-	c, err := cusConn.Get(nil)
+	// c, err := cusConn.Get()
+	c, err := cusConn.Get()
 	if err != nil {
 		panic(err)
 	}
