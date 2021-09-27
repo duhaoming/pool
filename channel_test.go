@@ -74,7 +74,7 @@ func TestPool(t *testing.T) {
 	}
 
 	poolConn := Open(Connects)
-	c, err := poolConn.Get(nil)
+	c, err := poolConn.Get()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func BenchmarkGetPool(b *testing.B) {
 		n.Add(1)
 		go func(n *sync.WaitGroup) {
 			defer n.Done()
-			c, err := poolConn.Get(nil)
+			c, err := poolConn.Get()
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -147,7 +147,7 @@ func BenchmarkGetGrpcPool(b *testing.B) {
 		//n.Add(1)
 		go func(n *sync.WaitGroup) {
 			//defer n.Done()
-			c, err := poolConn.Get(nil)
+			c, err := poolConn.Get()
 			if err != nil {
 				b.Fatal(err)
 			}
