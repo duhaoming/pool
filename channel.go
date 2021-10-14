@@ -10,11 +10,9 @@ import (
 
 var (
 	// ErrDBClosed 连接池关闭
-	ErrDBClosed = errors.New("database is closed")
+	ErrDBClosed = errors.New("connection pool is closed")
 	// ErrBadConn 无效的连接
 	ErrBadConn = errors.New("bad connection")
-	// ErrTimeOut 等待超时
-	ErrTimeOut = errors.New("wait timeout")
 )
 
 // Connect 连接接口
@@ -41,32 +39,35 @@ type DB struct {
 	openerCh     chan struct{}               //创建新连接信号
 	cleanerCh    chan struct{}               //清理连接信号
 
-	connector    Connect
-	ctx               context.Context
+	ctx         context.Context
 	maxLifetime time.Duration //活跃时间
-	timeOut       time.Duration //超时时间
+	timeOut     time.Duration //超时时间
 	maxOpen     int           //最大打开连接数
 	numOpen     int           //打开连接数
-	maxIdle        int           //最大空闲连接数
+	maxIdle     int           //最大空闲连接数
 	nextRequest uint64        //下一个等待连接key
 
-	stop    func() //关闭触发函数，context的
-	closed bool   //连接池是否关闭
+	connector Connect
+	stop      func() //关闭触发函数，context的
+	closed    bool   //连接池是否关闭
 }
 
-type connRequest struct{
+type connRequest struct {
 	conn *driverConn
-	err error
+	err  error
 }
 
 const connectionRequestQueueSize = 50
+const (
+	alwaysNewConn uint8 = iota
+	cachedOrNewConn
+)
 
 // OpenCustom 可配置连接
 func OpenCustom(c Connect, maxLifetime, timeOut time.Duration, maxIdle, maxOpen int) Pool {
 	ctx, cancel := context.WithCancel(context.Background())
 	db := &DB{
 		connector:    c,
-		ctx:          ctx,
 		openerCh:     make(chan struct{}, connectionRequestQueueSize),
 		stop:         cancel,
 		maxLifetime:  maxLifetime,
@@ -75,28 +76,7 @@ func OpenCustom(c Connect, maxLifetime, timeOut time.Duration, maxIdle, maxOpen 
 		maxOpen:      maxOpen,
 		freeConn:     make([]*driverConn, 0, maxOpen),
 		connRequests: make(map[uint64]chan connRequest),
-	}
-
-	// 监控
-	go db.connectionOpener(ctx)
-
-	return db
-}
-
-// Open 默认配置连接
-func Open(c Connect) Pool {
-	ctx, cancel := context.WithCancel(context.Background())
-	db := &DB{
-		connector:    c,
 		ctx:          ctx,
-		openerCh:     make(chan struct{}, connectionRequestQueueSize),
-		stop:         cancel,
-		maxLifetime:  3 * time.Minute,
-		timeOut:      15 * time.Second,
-		maxIdle:      10,
-		maxOpen:      10,
-		freeConn:     make([]*driverConn, 0, 10),
-		connRequests: make(map[uint64]chan connRequest),
 	}
 
 	// 监控
@@ -118,6 +98,7 @@ func (db *DB) connectionOpener(ctx context.Context) {
 	}
 }
 
+// 创建新的连接放入空闲连接队列，或直接返回在等待获取连接的终端
 func (db *DB) openNewConnection(ctx context.Context) {
 	ci, err := db.connector(ctx)
 	db.Lock()
@@ -148,10 +129,10 @@ func (db *DB) openNewConnection(ctx context.Context) {
 		return
 	}
 	db.Unlock()
-	dc.timer = time.AfterFunc(db.maxLifetime, dc.cleanDriver)
+	dc.clearConn = time.AfterFunc(db.maxLifetime, dc.cleanDriver)
 }
 
-// 资源创建失败时, 判断是否有还在等待的请求, 有就创建新的资源
+// 连接异常时, 判断是否有还在等待的请求, 有就创建新的资源 db.openerCh <- struct{}{}
 func (db *DB) maybeOpenNewConnections() {
 	numRequests := len(db.connRequests)
 	if db.maxOpen > 0 {
@@ -177,17 +158,8 @@ func (db *DB) nextConnRequestsKey() uint64 {
 	return next
 }
 
-// 释放map,delete只能删除键,不能释放内存
-func (db *DB) releaseConnRequests() {
-	if db.nextRequest != 0 && len(db.connRequests) == 0 {
-		db.connRequests = nil
-		db.nextRequest = 0
-		db.connRequests = make(map[uint64]chan connRequest)
-	}
-}
-
 // 获取资源
-func (db *DB) conn(ctx context.Context) (*driverConn, error) {
+func (db *DB) conn(ctx context.Context, strategy uint8) (*driverConn, error) {
 	db.Lock()
 	if db.closed {
 		db.Unlock()
@@ -201,18 +173,18 @@ func (db *DB) conn(ctx context.Context) (*driverConn, error) {
 		return nil, ctx.Err()
 	}
 
+	lifetime := db.maxLifetime
 	numFree := len(db.freeConn)
-	if numFree > 0 {
-		db.releaseConnRequests()
+	if strategy == cachedOrNewConn && numFree > 0 {
 		conn := db.freeConn[0]
 		copy(db.freeConn, db.freeConn[1:])
 		db.freeConn = db.freeConn[:numFree-1]
-		conn.inUse = true
-		db.Unlock()
-		if conn.expired(db.maxLifetime) {
+		if conn.expired(lifetime) {
+			db.Unlock()
 			conn.close()
 			return nil, ErrBadConn
 		}
+		db.Unlock()
 
 		return conn, nil
 	}
@@ -238,17 +210,13 @@ func (db *DB) conn(ctx context.Context) (*driverConn, error) {
 					}
 				}
 			}
-			return nil, ErrTimeOut
+			return nil, ctx.Err()
 		case ret, ok := <-req:
 			if !ok {
-				return nil, ErrBadConn
+				return nil, ErrDBClosed
 			}
 			if ret.err != nil {
 				return nil, ret.err
-			}
-			if ret.conn.expired(db.maxLifetime) {
-				ret.conn.close()
-				return nil, ErrBadConn
 			}
 			return ret.conn, nil
 		}
@@ -257,7 +225,7 @@ func (db *DB) conn(ctx context.Context) (*driverConn, error) {
 	db.numOpen++
 	db.Unlock()
 
-	conn, err := db.connector(ctx)
+	conn, err := db.connector(db.ctx)
 	if err != nil {
 		db.Lock()
 		db.numOpen--
@@ -269,13 +237,13 @@ func (db *DB) conn(ctx context.Context) (*driverConn, error) {
 		db:        db,
 		ci:        conn,
 		createdAt: time.Now(),
-		inUse:     true,
 	}
-	dc.timer = time.AfterFunc(db.maxLifetime, dc.cleanDriver)
+	dc.clearConn = time.AfterFunc(lifetime, dc.cleanDriver)
 	return dc, nil
 }
 
 // 资源回收
+// 连接活跃时间到期，则判断是否还有在等待的终端获取连接 maybeOpenNewConnections()
 func (db *DB) putConn(dc *driverConn, err error) bool {
 	db.Lock()
 	if dc.expired(db.maxLifetime) {
@@ -283,12 +251,14 @@ func (db *DB) putConn(dc *driverConn, err error) bool {
 		db.Unlock()
 		return false
 	}
-	dc.inUse = false
 	isRecovery := db.recovery(dc, err)
 	db.Unlock()
 	return isRecovery
 }
 
+// 判断打开连接是否大于最大连接数，大于关闭此链接、小于则继续
+// 判断是否又在等待获取连接的终端，有直接返回此链接
+// 既没有错误，池也没有关闭，放入空闲连接队列中
 func (db *DB) recovery(dc *driverConn, err error) bool {
 	if db.closed {
 		return false
@@ -297,7 +267,7 @@ func (db *DB) recovery(dc *driverConn, err error) bool {
 	if db.maxOpen > 0 && db.numOpen > db.maxOpen {
 		return false
 	}
-	if c := len(db.connRequests); c > 0 {
+	if len(db.connRequests) > 0 {
 		var req chan connRequest
 		var reqkey uint64
 		for reqkey, req = range db.connRequests {
@@ -307,13 +277,12 @@ func (db *DB) recovery(dc *driverConn, err error) bool {
 		delete(db.connRequests, reqkey)
 		req <- connRequest{
 			conn: dc,
-			err: err,
+			err:  err,
 		}
-		dc.inUse = true
 		close(req)
 
 		return true
-	} else if db.maxIdle > len(db.freeConn) {
+	} else if db.maxIdle > len(db.freeConn) && err == nil {
 		db.freeConn = append(db.freeConn, dc)
 		return true
 	}
@@ -352,14 +321,19 @@ func (db *DB) Close() (err error) {
 }
 
 // 获取资源
+// 重试机制：2次
+// 重试2次之后还是异常（ErrBadConn）连接，则重新获取新的连接，而不是从空闲连接队列中获取
 func (db *DB) Get() (dc Driver, err error) {
-	ctext, cancel := context.WithCancel(db.ctx)
+	ctx, cancel := context.WithCancel(db.ctx)
 	timer := time.AfterFunc(db.timeOut, cancel)
 	for i := 0; i < 2; i++ {
-		dc, err = db.conn(ctext)
+		dc, err = db.conn(ctx, cachedOrNewConn)
 		if err != ErrBadConn {
 			break
 		}
+	}
+	if err == ErrBadConn {
+		dc, err = db.conn(ctx, alwaysNewConn)
 	}
 	if timer.Stop() {
 		cancel()
