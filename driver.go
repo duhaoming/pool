@@ -10,16 +10,14 @@ type driverConn struct {
 	db *DB
 	mu sync.Mutex
 
+	clearConn *time.Timer
 	createdAt time.Time //连接创建时间
-	timer     *time.Timer
 	ci        io.Closer //连接接口
-	done      chan struct{}
-	isClosed  bool
-	inUse     bool //是否被使用
+	closed    bool
 }
 
 // 判断活跃时间是否到期
-func (dc *driverConn) expired(timeout time.Duration) bool {
+func (dc driverConn) expired(timeout time.Duration) bool {
 	if timeout <= 0 {
 		return false
 	}
@@ -29,16 +27,18 @@ func (dc *driverConn) expired(timeout time.Duration) bool {
 // 关闭资源
 func (dc *driverConn) close() (err error) {
 	dc.mu.Lock()
-	if dc.ci == nil || dc.isClosed {
+	if dc.closed {
 		dc.mu.Unlock()
 		return nil
 	}
-	dc.isClosed = true
-	if dc.timer != nil {
-		dc.timer.Stop()
+	dc.closed = true
+	if dc.clearConn != nil {
+		dc.clearConn.Stop()
+	}
+	if dc.ci != nil {
+		err = dc.ci.Close()
 	}
 	dc.mu.Unlock()
-	err = dc.ci.Close()
 
 	dc.db.Lock()
 	dc.db.numOpen--
@@ -49,7 +49,7 @@ func (dc *driverConn) close() (err error) {
 }
 
 // 获取真实连接Connect返回的值，连接池通用性
-func (dc *driverConn) Conn() io.Closer {
+func (dc driverConn) Conn() io.Closer {
 	return dc.ci
 }
 
@@ -64,7 +64,6 @@ func (dc *driverConn) Close() error {
 func (dc *driverConn) cleanDriver() {
 	dc.db.Lock()
 	if dc.db.closed || dc.db.numOpen == 0 {
-		dc.db.releaseConnRequests()
 		dc.db.Unlock()
 		return
 	}
@@ -84,6 +83,5 @@ func (dc *driverConn) cleanDriver() {
 
 	for _, c := range closing {
 		c.close()
-		return
 	}
 }
