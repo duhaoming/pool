@@ -7,22 +7,18 @@ package pool
 import (
 	"bytes"
 	"context"
-	"google.golang.org/grpc"
 	"io"
 	"log"
 	"net"
 	"sync"
 	"testing"
+	"time"
 )
 
 var addr = "127.0.0.1:8061"
 
 func Connects(_ context.Context) (io.Closer, error) {
 	return net.Dial("tcp", addr)
-}
-
-func grpcConn(_ context.Context) (io.Closer, error) {
-	return grpc.Dial("localhost:9080", grpc.WithInsecure())
 }
 
 func testListen() (func(), error) {
@@ -73,7 +69,7 @@ func TestPool(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	poolConn := Open(Connects)
+	poolConn := OpenCustom(Connects, time.Minute*5, time.Second*5, 10, 10)
 	c, err := poolConn.Get()
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +95,7 @@ func BenchmarkGetPool(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	poolConn := Open(Connects)
+	poolConn := OpenCustom(Connects, time.Minute*5, time.Second*5, 10, 10)
 	b.StartTimer()
 
 	var n sync.WaitGroup
@@ -129,36 +125,18 @@ func BenchmarkGetPool(b *testing.B) {
 		}(&n)
 	}
 	n.Wait()
+	cancel()
 	poolConn.Close()
 
-	cancel()
 	b.StopTimer()
 }
 
-func BenchmarkGetGrpcPool(b *testing.B) {
-	b.StopTimer()
-
-	poolConn := Open(Connects)
-	b.StartTimer()
-
-	var n sync.WaitGroup
-	println(b.N)
-	for i := 0; i < b.N; i++ {
-		//n.Add(1)
-		go func(n *sync.WaitGroup) {
-			//defer n.Done()
-			c, err := poolConn.Get()
-			if err != nil {
-				b.Fatal(err)
-			}
-
-			//co := c.Conn().(*grpc.ClientConn)
-
-			c.Close()
-		}(&n)
-	}
-	//n.Wait()
+// 关闭池之后连接获取是否正常
+func TestColse(t *testing.T) {
+	poolConn := OpenCustom(Connects, time.Minute*5, time.Second*5, 10, 10)
 	poolConn.Close()
-
-	b.StopTimer()
+	_, err := poolConn.Get()
+	if err != nil {
+		t.Fatal(err)
+	}
 }
