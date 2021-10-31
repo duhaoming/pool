@@ -215,10 +215,7 @@ func (db *DB) conn(ctx context.Context, strategy uint8) (*driverConn, error) {
 			if !ok {
 				return nil, ErrDBClosed
 			}
-			if ret.err != nil {
-				return nil, ret.err
-			}
-			return ret.conn, nil
+			return ret.conn, ret.err
 		}
 	}
 
